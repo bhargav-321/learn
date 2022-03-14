@@ -1,0 +1,14 @@
+apply plugin: "org.springframework.boot"
+
+dependencies {
+	
+}
+
+
+sampleJar {
+  dependsOn bootJar
+}
+
+bootJar {
+  archiveName = 'sampleSpring.jar'
+}

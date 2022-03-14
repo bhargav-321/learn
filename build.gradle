@@ -1,0 +1,144 @@
+plugins {
+	id "java"
+	id "eclipse"
+  	id "eclipse-wtp"
+  	id "maven-publish"
+  	id "com.jfrog.artifactory" version "4.15.2"
+  	id "org.springframework.boot" version "2.3.3.RELEASE" apply false
+	id "io.spring.dependency-management" version "1.0.10.RELEASE"
+	id "com.github.onslip.gradle-one-jar" version "1.0.5"
+  }
+
+allprojects {
+  apply plugin: 'eclipse'
+  apply plugin: 'java'
+  apply plugin: 'eclipse-wtp'
+  apply plugin: 'java-library'
+  apply plugin: 'gradle-one-jar'
+  apply plugin: 'maven-publish'
+  apply plugin: 'com.jfrog.artifactory'
+  
+  sourceCompatibility = '11'
+  targetCompatibility = '11'
+  version = '1.0.0'
+  group = 'com.pzone.spring.sample'
+  
+  repositories {
+    maven {
+      url 'http://artifactory.protocolzone.com:8081/artifactory/pzone-libs'
+       credentials {
+        username = "${artifactory_user}"
+        password = "${artifactory_password}"
+      }
+    }
+  }
+  
+  ext {
+    createdBy = 'ProtocolZone private limited'
+    springboot = '2.4.2'
+  }
+  
+  configurations.all {
+    all*.exclude module: 'spring-boot-starter-logging'
+  }
+  
+  dependencies {
+    implementation ("org.springframework.boot:spring-boot-starter-web:${springboot}")
+    implementation ("org.springframework.boot:spring-boot-starter-log4j2:${springboot}")
+ 	implementation ("org.apache.logging.log4j:log4j-api:2.6.2")
+    implementation ("org.apache.logging.log4j:log4j-core:2.6.2")
+    // https://mvnrepository.com/artifact/io.leangen.graphql/spqr
+	//implementation group: 'io.leangen.graphql', name: 'spqr', version: '0.11.2'
+    // https://mvnrepository.com/artifact/io.leangen.graphql/graphql-spqr-spring-boot-starter
+	implementation group: 'io.leangen.graphql', name: 'graphql-spqr-spring-boot-starter', version: '0.0.6'
+    
+  }
+  
+  jar {
+    doFirst {
+      compileJava.destinationDir.mkdirs()
+      File buildstamp = new File(compileJava.destinationDir, "buildstamp").write(version)
+    }
+    
+    manifest.attributes 'Created-By': createdBy, 'Application-Name': project.name, 'Implementation-Version': project.version
+  }
+  
+  task cleanLib(type: Delete, dependsOn: clean) {
+    delete fileTree(dir: '../lib/')
+  }
+  
+  task sampleJar(dependsOn: ['clean', 'build']) {
+  }
+  
+  
+  compileJava.mustRunAfter cleanLib
+  compileJava.mustRunAfter clean
+  cleanLib.mustRunAfter clean
+  
+  tasks.publishToMavenLocal.dependsOn(sampleJar)
+  publishToMavenLocal.mustRunAfter sampleJar
+   
+  tasks.artifactoryPublish.dependsOn(sampleJar)
+  artifactoryPublish.mustRunAfter sampleJar
+  
+  defaultTasks 'clean', 'build', 'sampleJar'
+  
+  task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+  }
+  
+  publishing {
+    publications {
+        mavenJava(MavenPublication) {
+        from components.java
+        //artifact "target/*.jar"
+        artifact (sourcesJar) { 
+          classifier = 'sources'
+        }
+      }
+    }
+  }
+  
+  artifactory {
+    contextUrl = "http://artifactory.protocolzone.com:8081/artifactory/"
+    publish {
+      repository {
+        repoKey = 'libs-release'
+        username = "${artifactory_user}"
+        password = "${artifactory_password}"
+        maven = true
+      }
+      
+      defaults {
+        publications ('mavenJava')
+        publishArtifacts = true
+        // Properties to be attached to the published artifacts.
+        properties = ['qa.level': 'basic', 'dev.team' : 'core']
+        publishPom = true // Publish generated POM files to Artifactory (true by default)
+      }
+    }
+  }  
+  
+  test {
+    testLogging { events 'started', 'passed' }
+  }
+  
+  configurations {
+    jpamodelgen
+  }
+  
+  sourceSets {
+    generated {
+      java { srcDirs = ['src/main/generated', 'src/main/webapp'] }
+    }
+  }
+
+  eclipse {
+    classpath {
+      downloadSources = true
+      downloadJavadoc = false
+      defaultOutputDir = file('eclipse/build')
+    }
+  }
+}
